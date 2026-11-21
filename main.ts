@@ -18,19 +18,52 @@
 // Run it the way the grader does:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const botDir = process.env.MAKEFUN_BOT_DIR ?? "/bot";
 const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
 
+const videoPath = join(botDir, "VIDEO.json");
+
+// Validate VIDEO.json before copying: it must parse as JSON, carry a
+// string `url`, and point at a YouTube video (Shorts, watch, or youtu.be).
+// Failing fast here beats copying a bad file the house cannot read.
+let videoUrl;
+try {
+  const parsed = JSON.parse(readFileSync(videoPath, "utf8"));
+  videoUrl = parsed?.url;
+} catch (err) {
+  console.error(`VIDEO.json is not valid JSON: ${(err as Error).message}`);
+  process.exit(1);
+}
+if (typeof videoUrl !== "string" || videoUrl.length === 0) {
+  console.error("VIDEO.json has no string `url` field.");
+  process.exit(1);
+}
+let host;
+try {
+  host = new URL(videoUrl).hostname;
+} catch {
+  console.error(`VIDEO.json url is not a valid URL: ${videoUrl}`);
+  process.exit(1);
+}
+const okHost = host === "youtube.com" || host === "www.youtube.com" || host === "youtu.be" || host === "www.youtu.be";
+const okPath = videoUrl.includes("/shorts/") || videoUrl.includes("watch?v=") || host === "youtu.be" || host === "www.youtu.be";
+if (!okHost || !okPath) {
+  console.error(`VIDEO.json url is not a YouTube video link: ${videoUrl}`);
+  process.exit(1);
+}
+
 mkdirSync(outputDir, { recursive: true });
 
 try {
-  copyFileSync(join(botDir, "VIDEO.json"), join(outputDir, "VIDEO.json"));
+  copyFileSync(videoPath, join(outputDir, "VIDEO.json"));
 } catch (err) {
   console.error(
     `could not copy VIDEO.json from ${botDir}: ${(err as Error).message}`,
   );
   process.exit(1);
 }
+
+console.log(`copied VIDEO.json -> ${outputDir} (url: ${videoUrl})`);
